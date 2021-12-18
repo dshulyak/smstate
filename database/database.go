@@ -13,7 +13,7 @@ var (
 )
 
 type Executor interface {
-	Exec(context.Context, string, Encoder, Decoder) error
+	Exec(string, Encoder, Decoder) error
 }
 
 type Database struct {
@@ -37,7 +37,21 @@ type conf struct {
 	connections int
 }
 
+func WithConnections(n int) Opt {
+	return func(c *conf) {
+		c.connections = n
+	}
+}
+
 type Opt func(c *conf)
+
+func InMemory() *Database {
+	db, err := Open("file::memory:?mode=memory", WithConnections(1))
+	if err != nil {
+		panic(err)
+	}
+	return db
+}
 
 func Open(uri string, opts ...Opt) (*Database, error) {
 	config := defaultConf()

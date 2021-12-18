@@ -21,7 +21,7 @@ type migration struct {
 	content *bufio.Scanner
 }
 
-func applyMigrations(ctx context.Context, db *Database) error {
+func Apply(ctx context.Context, db Executor) error {
 	files, err := embedded.ReadDir("migrations")
 	if err != nil {
 		return err
@@ -57,15 +57,9 @@ func applyMigrations(ctx context.Context, db *Database) error {
 		return migrations[i].order < migrations[j].order
 	})
 
-	tx, err := db.Tx(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Release()
-
 	var current int
 
-	if err := tx.Exec("PRAGMA user_version;", nil, func(stmt *Statement) bool {
+	if err := db.Exec("PRAGMA user_version;", nil, func(stmt *Statement) bool {
 		current = stmt.ColumnInt(0)
 		return true
 	}); err != nil {
@@ -77,14 +71,14 @@ func applyMigrations(ctx context.Context, db *Database) error {
 			continue
 		}
 		for m.content.Scan() {
-			if err := tx.Exec(m.content.Text(), nil, nil); err != nil {
+			if err := db.Exec(m.content.Text(), nil, nil); err != nil {
 				return err
 			}
 		}
 		// binding values in pragma statement is not allowed
-		if err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d;", m.order), nil, nil); err != nil {
+		if err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d;", m.order), nil, nil); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }

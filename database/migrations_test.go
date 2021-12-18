@@ -11,19 +11,19 @@ import (
 )
 
 func TestMigrations(t *testing.T) {
-	db, err := Open("file:test.sql")
-	require.NoError(t, err)
+	// schema changes for some reason is not stored with other connections in memory mode.
+	db := InMemory()
 
 	ctx := context.Background()
-	require.NoError(t, applyMigrations(ctx, db))
+	require.NoError(t, Apply(ctx, db))
 
-	require.NoError(t, err)
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	id := make([]byte, 5)
+	id := make([]byte, 10)
 	rng.Read(id)
-	dst := make([]byte, 10)
+	dst := make([]byte, 20)
 	hex.Encode(dst, id)
-	require.NoError(t, db.Exec("INSERT INTO blocks (block_id) VALUES (?1);", func(stmt *Statement) {
+
+	require.NoError(t, db.Exec("INSERT INTO blocks (id) VALUES (?1);", func(stmt *Statement) {
 		stmt.BindBytes(1, dst)
 	}, nil))
 }

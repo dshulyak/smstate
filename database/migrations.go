@@ -1,6 +1,8 @@
 package database
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"embed"
 	"fmt"
@@ -16,7 +18,7 @@ var embedded embed.FS
 type migration struct {
 	order   int
 	name    string
-	content string
+	content *bufio.Scanner
 }
 
 func applyMigrations(ctx context.Context, db *Database) error {
@@ -38,10 +40,17 @@ func applyMigrations(ctx context.Context, db *Database) error {
 		if err != nil {
 			return err
 		}
+		scanner := bufio.NewScanner(bytes.NewBuffer(content))
+		scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+			if i := bytes.Index(data, []byte(";")); i >= 0 {
+				return i + 1, data[0 : i+1], nil
+			}
+			return 0, nil, nil
+		})
 		migrations = append(migrations, migration{
 			order:   order,
 			name:    file.Name(),
-			content: strings.TrimSpace(string(content)),
+			content: scanner,
 		})
 	}
 	sort.Slice(migrations, func(i, j int) bool {
@@ -67,12 +76,13 @@ func applyMigrations(ctx context.Context, db *Database) error {
 		if m.order <= current {
 			continue
 		}
-		if err := tx.Exec(m.content, nil, nil); err != nil {
-			return err
+		for m.content.Scan() {
+			if err := tx.Exec(m.content.Text(), nil, nil); err != nil {
+				return err
+			}
 		}
-		if err := tx.Exec("PRAGMA user_version = $current;", func(stmt *Statement) {
-			stmt.SetInt64("$current", int64(m.order))
-		}, nil); err != nil {
+		// binding values in pragma statement is not allowed
+		if err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d;", m.order), nil, nil); err != nil {
 			return err
 		}
 	}

@@ -70,7 +70,10 @@ func (db *Database) Exec(query string, encoder Encoder, decoder Decoder) error {
 }
 
 func exec(conn *sqlite.Conn, query string, encoder Encoder, decoder Decoder) error {
-	stmt := conn.Prep(query)
+	stmt, err := conn.Prepare(query)
+	if err != nil {
+		return err
+	}
 	if encoder != nil {
 		encoder(stmt)
 	}
@@ -104,9 +107,10 @@ func (tx *Tx) Commit() error {
 	stmt := tx.conn.Prep("COMMIT;")
 	_, tx.err = stmt.Step()
 	if tx.err != nil {
-		tx.commited = false
+		return tx.err
 	}
-	return tx.err
+	tx.commited = true
+	return nil
 }
 
 func (tx *Tx) Release() error {

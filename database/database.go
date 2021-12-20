@@ -74,6 +74,15 @@ func (db *Database) Tx(ctx context.Context) (*Tx, error) {
 	return tx, tx.begin()
 }
 
+func (db *Database) ConcurrentTx(ctx context.Context) (*Tx, error) {
+	conn := db.pool.Get(ctx)
+	if conn == nil {
+		return nil, ErrNoConnection
+	}
+	tx := &Tx{db: db, conn: conn}
+	return tx, tx.beginConcurrent()
+}
+
 func (db *Database) Exec(query string, encoder Encoder, decoder Decoder) error {
 	conn := db.pool.Get(context.Background())
 	if conn == nil {
@@ -113,6 +122,17 @@ type Tx struct {
 
 func (tx *Tx) begin() error {
 	stmt := tx.conn.Prep("BEGIN;")
+	_, err := stmt.Step()
+	return err
+}
+
+// by default sqlite will support single writer, with concurrent it will optimistically support many
+// but the code should expect that transaction may be aborted if another concurrent transaction
+// modified same rows.
+//
+// https://sqlite.org/src/doc/begin-concurrent/doc/begin_concurrent.md
+func (tx *Tx) beginConcurrent() error {
+	stmt := tx.conn.Prep("BEGIN CONCURRENT;")
 	_, err := stmt.Step()
 	return err
 }
